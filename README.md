@@ -2,131 +2,180 @@
 
 running with ~28.9k satellites and 61 time slots. Propagation alone is okay, but the next step (building connectivity) would try to compute pairwise distances for n·(n-1)·M ≈ 28,884²·61 ≈ 51,000,000,000 pairs
 
-🛰️ Step 1: Get Satellite Orbit Data (TLEs)
+# 🛰️ Shortest Temporal Path
 
-You start with a file from Space-Track.org
- — the site that publishes official satellite orbit data.
+This project calculates the **fastest time-respecting communication route** between satellites in orbit — a *temporal shortest path* problem.
 
-Each satellite’s motion in space is described by two short lines of numbers called a TLE (Two-Line Element set).
+It uses real-world orbital data (TLEs) from [Space-Track.org](https://www.space-track.org) and simulates how satellite connections appear and disappear over time.
 
-A TLE tells us where a satellite is in its orbit and how it moves over time.
+---
 
-You downloaded these as a JSON file (tle_recent_30.json) that contains 28k+ satellites and their latest TLEs.
+## ⚙️ Overview
 
-Think of this as “the orbital fingerprint” of every satellite.
+- Running with **~28.9k satellites** and **61 time slots** (2-minute intervals).  
+- Propagation (position calculation) is feasible, but computing pairwise distances for all satellites would mean:
 
-🧠 Step 2: Choose Which Satellites to Use
+n·(n-1)·M ≈ 28,884²·61 ≈ 51,000,000,000 pairs
 
-You don’t want to simulate all 28,000 at once — that’s too heavy.
 
+That’s why we limit the analysis to a smaller subset (e.g., 1,000 satellites).
+
+---
+
+## 🛰️ Step 1: Get Satellite Orbit Data (TLEs)
+
+- Source: [Space-Track.org](https://www.space-track.org)
+- Each satellite’s motion is described by two lines of numbers called a **TLE (Two-Line Element set)**.
+- A TLE provides the orbital parameters that define where the satellite is and how it moves.
+- You downloaded these as a JSON file (`tle_recent_30.json`) containing 28k+ satellites and their latest TLEs.
+
+> Think of this as the **“orbital fingerprint”** of every satellite.
+
+---
+
+## 🧠 Step 2: Choose Which Satellites to Use
+
+Simulating all 28,000 satellites is too heavy.  
 So the script:
 
-Optionally filters by name (e.g., only STARLINK satellites).
+- Optionally **filters** by name (e.g., `"STARLINK"`).
+- Keeps only the **latest TLE** per satellite.
+- **Limits** the total number to a manageable size (default: 1,000).
 
-Keeps only the most recent TLE for each satellite.
+This gives you a **subset of satellites** — a manageable sample of the global fleet.
 
-Limits the total number (you capped it to 1,000).
+---
 
-That’s your “subset” of satellites to analyze — like picking a manageable group out of a global fleet.
+## ⏱️ Step 3: Pick a Time Window and Step Size
 
-⏱️ Step 3: Pick a Time Window and Step Size
+- Define a **start** and **end** time (e.g., 2 hours).
+- Choose a **step size** (e.g., every 2 minutes).
 
-You set a start and end time, e.g. 2 hours, and a time step — every 2 minutes.
-
-That defines 61 time points (“slots”) between start and end.
-
+That produces **61 time points (slots)** between start and end.  
 Each slot represents a snapshot of the sky at that moment.
 
-📍 Step 4: Simulate Satellite Positions (SGP4 Propagation)
+---
 
-For every satellite and each time slot, you compute its position in space using the SGP4 model — a physics-based formula used worldwide.
+## 📍 Step 4: Simulate Satellite Positions (SGP4 Propagation)
 
-It gives you something like:
+For each satellite and each time slot:
 
-Satellite 5 at 2025-11-08 00:00:00Z → [x, y, z] in km
-Satellite 5 at 2025-11-08 00:02:00Z → [x, y, z] in km
-...
+- Compute its 3D position using the **SGP4 model**, a standard physics-based orbit propagator.
+
+Example:
+Satellite 5 at 2025-11-08 00:00:00Z → [x, y, z] km
+Satellite 5 at 2025-11-08 00:02:00Z → [x, y, z] km
 
 
-So now you know exactly where every satellite is at every moment.
+Now you know where every satellite is at each moment in time.
 
-🌐 Step 5: Build a “Temporal Graph”
+---
 
-This is the key concept from your thesis idea.
+## 🌐 Step 5: Build a Temporal Graph
 
-Imagine every satellite as a node.
+This is the core concept from the **temporal graph** idea in your thesis.
 
-Draw an edge (link) between two satellites if they are close enough (e.g., within 900 km).
+- Each **satellite = a node**.
+- Draw an **edge (link)** between two satellites if they are within a chosen distance (e.g., ≤900 km).
+- Repeat for each time slot.
 
-Do that for each time slot.
+Over time, links **appear and disappear** as satellites move — creating a **time-varying graph**.
 
-So over time, connections appear and disappear as satellites move around.
-That’s why it’s called a temporal graph — a network that changes with time.
+---
 
-🔄 Step 6: Create a Binary Connectivity Timeline
+## 🔄 Step 6: Create a Binary Connectivity Timeline
 
-For every pair of satellites (say, Sat A → Sat B):
+For every satellite pair (e.g., Sat A → Sat B):
 
-You record a sequence of 1s and 0s for each slot:
-
+- Record a **sequence of 1s and 0s** across time slots:
 [1, 1, 0, 0, 1, 1, 1, 0, ...]
 
 
-where 1 = “link up” and 0 = “no link”.
+- `1` = link up (within range)
+- `0` = no link
 
-If a link stays up for t consecutive 1s (for example, 2 time slots), it’s considered usable for data transfer.
+- A link must remain “up” for at least **t consecutive 1s** (e.g., 2 time slots) to count as stable and usable.
 
-Each of these binary strings becomes part of the temporal graph’s data structure.
+Each binary string becomes a **connectivity timeline** for that edge.
 
-🧮 Step 7: Find the Fastest “Temporal Path”
+---
 
-Now comes the “shortest temporal path” part — your thesis algorithm.
+## 🧮 Step 7: Find the Fastest “Temporal Path”
 
-We want to know:
+Now comes the **temporal shortest path** algorithm — the heart of the thesis.
 
-“If I start sending a signal from Satellite A, how fast can it reach Satellite B, given that links come and go over time?”
+We ask:
 
-The algorithm:
+> “If I start sending a signal from Satellite A, how quickly can it reach Satellite B, given that links appear and disappear over time?”
 
-Starts with all direct one-hop connections.
+Algorithm steps:
 
-Expands paths through intermediate satellites, but only when the timing works (you can’t jump to a satellite before its link appears).
+1. Start with all direct one-hop connections.
+2. Expand paths through intermediate satellites — but only when timing allows (can’t use a link before it exists).
+3. Pick the combination that minimizes **elapsed time** — the fewest total time slots between start and finish.
 
-Finds the combination that minimizes elapsed time — the fewest total time slots between start and finish.
+It’s like finding the quickest relay path across moving satellites —  
+a **space-time version of Dijkstra’s algorithm**.
 
-So it’s like finding the quickest relay path across moving satellites — a space-time version of Dijkstra’s algorithm.
+---
 
-🗺️ Step 8: Print the Shortest Route
+## 🗺️ Step 8: Print the Shortest Route
 
-Finally, it prints:
+The output includes:
 
-The IDs of the satellites used in the path.
-
-When the connection starts and ends.
-
-How many time slots (or minutes) it takes.
+- Source and destination satellite IDs
+- The node sequence used
+- Start and finish slots/timestamps
+- Elapsed duration (in slots and minutes)
 
 Example:
-
 === Shortest Temporal Path ===
 From 5 to 11
 Node sequence: [5, 123, 456, 11]
 Elapsed time: 8 slots (~16 minutes)
 
 
-That’s your optimal communication route through the dynamic satellite network.
+This represents your **optimal communication route** through the dynamic satellite network.
 
-🧩 In Simple Terms
+---
 
-Here’s the simplest analogy:
+## 🧩 In Simple Terms
 
-Step	Analogy
-Load TLEs	Load the latest GPS of each satellite
-Filter	Pick only the ones you care about (e.g. Starlink)
-Propagate	Watch them move for 2 hours, snapshot every 2 min
-Build graph	Note which satellites can “see” each other (within 900 km)
-Temporal graph	Links appear/disappear over time
-Shortest path	Find the quickest chain of satellites that connects A → B as the network changes
-Output	Print who passes the “message” and how long it takes
+| Step | Analogy |
+|------|----------|
+| Load TLEs | Load the latest GPS data of each satellite |
+| Filter | Pick only the ones you care about (e.g., Starlink) |
+| Propagate | Watch them move for 2 hours, snapshot every 2 min |
+| Build Graph | Note which satellites can “see” each other (within 900 km) |
+| Temporal Graph | Links appear/disappear over time |
+| Shortest Path | Find the quickest chain of satellites from A → B as the network changes |
+| Output | Print who passes the “message” and how long it takes |
 
-So — it’s like Google Maps in space, but the roads (links) open and close every couple of minutes as satellites orbit.
+> It’s like **Google Maps for space** — but the roads (links) open and close every few minutes as satellites orbit.
+
+---
+
+## ⚡ Performance Note
+
+For 1,000 satellites and 61 slots, the vectorized code handles about **61 million pairwise distance checks**, which is reasonable.  
+For 28k satellites, it would be **~51 billion checks** — impossible without distributed computing or pruning (filtering).
+
+---
+
+## 📚 References
+
+- **Data source:** [Space-Track.org](https://www.space-track.org)
+- **Propagation model:** [SGP4](https://pypi.org/project/sgp4/) (Vallado/AFRL)
+- **Concept:** “All-Pairs Shortest Temporal Path” — based on your thesis algorithm.
+
+---
+
+## 🧠 TL;DR
+
+We build a **time-aware satellite network** from real orbital data and use it to find the **fastest possible path** a signal could take from one satellite to another —  
+while the network itself keeps changing as the satellites move around Earth.
+
+
+
+
+
